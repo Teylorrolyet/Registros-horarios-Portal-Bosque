@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portal Bosque · Registro de Horarios</title>
+
+<link rel="manifest" href="manifest.json">
+
+<style>
+:root{
+  --verde-oscuro:#14532d;
+  --verde:#166534;
+  --verde-claro:#22c55e;
+  --bg:#f0f7f4;
+  --card:#ffffff;
+  --text:#0f172a;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#020617;
+    --card:#0f172a;
+    --text:#e5e7eb;
+  }
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+.panel{
+  background:var(--card);
+  width:100%;
+  max-width:560px;
+  padding:1.8rem;
+  border-radius:18px;
+  box-shadow:0 20px 40px rgba(0,0,0,.15);
+  animation:fade .4s ease;
+}
+@keyframes fade{from{opacity:0;transform:translateY(10px)}to{opacity:1}}
+h1{text-align:center;color:var(--verde-oscuro)}
+input,select,button{
+  width:100%;
+  padding:.75rem;
+  margin-bottom:.6rem;
+  border-radius:10px;
+  border:1px solid #94a3b8;
+}
+button{
+  background:var(--verde-oscuro);
+  color:#fff;
+  border:none;
+  font-weight:600;
+  transition:.2s;
+}
+button:active{transform:scale(.97)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.hidden{display:none}
+table{width:100%;border-collapse:collapse;margin-top:1rem}
+th,td{text-align:center;padding:.45rem;border-bottom:1px solid #ccc}
+.summary{
+  background:linear-gradient(135deg,var(--verde),var(--verde-claro));
+  color:#fff;
+  padding:.8rem;
+  border-radius:14px;
+  margin:.8rem 0;
+  text-align:center;
+}
+.logo{
+  display:flex;
+  justify-content:center;
+  margin-bottom:.6rem;
+}
+.logo span{
+  font-size:2.4rem;
+  font-weight:800;
+  color:var(--verde-oscuro);
+}
+</style>
+</head>
+
+<body>
+<div class="panel">
+
+<div id="auth">
+  <div class="logo"><span>🌲 B</span></div>
+  <h1>Portal Bosque</h1>
+  <input id="user" placeholder="Nombre de usuario">
+  <input id="pin" type="password" maxlength="4" placeholder="PIN (4 dígitos)">
+  <button onclick="login()">Ingresar</button>
+  <button onclick="register()">Crear usuario</button>
+</div>
+
+<div id="app" class="hidden">
+  <h3 id="welcome"></h3>
+
+  <label>Mes</label>
+  <select id="mesFiltro" onchange="animate(render)"></select>
+
+  <div class="summary" id="resumen"></div>
+
+  <label>Fecha</label>
+  <input type="date" id="fecha">
+
+  <div class="grid">
+    <div>
+      <label>Entrada</label>
+      <input type="time" id="entrada">
+    </div>
+    <div>
+      <label>Salida</label>
+      <input type="time" id="salida">
+    </div>
+  </div>
+
+  <button onclick="guardar()">Guardar jornada</button>
+  <button onclick="compartir()">📤 Compartir por WhatsApp</button>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Fecha</th><th>Entrada</th><th>Salida</th><th>Horas</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="tabla"></tbody>
+  </table>
+
+  <button onclick="logout()">Cerrar sesión</button>
+</div>
+</div>
+
+<script>
+let currentUser=null;
+
+const hoy=new Date();
+fecha.value=hoy.toISOString().slice(0,10);
+entrada.value="07:00";
+salida.value="14:00";
+
+function register(){
+  if(localStorage.getItem(user.value)) return alert('Usuario ya existe');
+  localStorage.setItem(user.value,JSON.stringify({pin:pin.value,logs:[]}));
+  alert('Usuario creado');
+}
+function login(){
+  const d=JSON.parse(localStorage.getItem(user.value));
+  if(!d||d.pin!==pin.value) return alert('Datos incorrectos');
+  currentUser=user.value;
+  auth.classList.add('hidden');
+  app.classList.remove('hidden');
+  welcome.textContent='Empleado: '+currentUser;
+  cargarMeses(); render();
+}
+function logout(){location.reload()}
+
+function guardar(){
+  const d=JSON.parse(localStorage.getItem(currentUser));
+  const min=calc(entrada.value,salida.value);
+  if(min<=0) return alert('Salida inválida');
+  d.logs.unshift({f:fecha.value,i:entrada.value,o:salida.value});
+  localStorage.setItem(currentUser,JSON.stringify(d));
+  cargarMeses(); animate(render);
+}
+
+function render(){
+  const d=JSON.parse(localStorage.getItem(currentUser));
+  const m=mesFiltro.value;
+  tabla.innerHTML='';
+  let total=0,dias=0;
+
+  d.logs.forEach((l,i)=>{
+    if(m && !l.f.startsWith(m)) return;
+    const min=calc(l.i,l.o);
+    total+=min; dias++;
+    tabla.innerHTML+=`
+    <tr>
+      <td>${l.f.split('-').reverse().join('/')}</td>
+      <td>${l.i}</td>
+      <td>${l.o}</td>
+      <td>${fmt(min)}</td>
+      <td><button onclick="del(${i})">✕</button></td>
+    </tr>`;
+  });
+
+  resumen.innerHTML=`📊 Días trabajados: ${dias} · ⏱ Total: ${fmt(total)} hs`;
+}
+
+function compartir(){
+  const d=JSON.parse(localStorage.getItem(currentUser));
+  const m=mesFiltro.value || hoy.toISOString().slice(0,7);
+
+  let total=0,dias=0;
+
+  let mensaje=`🌲 *PORTAL BOSQUE – REGISTRO DE HORARIOS*
+
+Empleado: ${currentUser}
+Mes: ${formatearMes(m)}
+
+📅 *Detalle diario:*`;
+
+  d.logs.forEach(l=>{
+    if(m && !l.f.startsWith(m)) return;
+    const min=calc(l.i,l.o);
+    total+=min; dias++;
+    mensaje+=`
+${l.f.split('-').reverse().join('/')} · ${l.i} – ${l.o} · ⏱ ${fmt(min)} hs`;
+  });
+
+  mensaje+=`
+────────────────
+📊 *Resumen mensual*
+Días trabajados: ${dias}
+Total de horas: ${fmt(total)} hs`;
+
+  window.open("https://wa.me/?text="+encodeURIComponent(mensaje),"_blank");
+}
+
+function formatearMes(m){
+  const [y,mo]=m.split("-");
+  const meses=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+  return meses[Number(mo)-1]+" "+y;
+}
+
+function del(i){
+  const d=JSON.parse(localStorage.getItem(currentUser));
+  d.logs.splice(i,1);
+  localStorage.setItem(currentUser,JSON.stringify(d));
+  render();
+}
+function calc(i,o){
+  const [a,b]=i.split(':').map(Number);
+  const [c,d]=o.split(':').map(Number);
+  return c*60+d-(a*60+b);
+}
+function fmt(m){
+  return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+}
+function cargarMeses(){
+  const d=JSON.parse(localStorage.getItem(currentUser));
+  const ms=[...new Set(d.logs.map(l=>l.f.slice(0,7)))];
+  mesFiltro.innerHTML='<option value="">Mes actual</option>';
+  ms.forEach(m=>mesFiltro.innerHTML+=`<option value="${m}">${formatearMes(m)}</option>`);
+}
+function animate(fn){
+  app.style.opacity=.4;
+  setTimeout(()=>{fn();app.style.opacity=1},120);
+}
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('service-worker.js');
+}
+</script>
+</body>
+</html>
